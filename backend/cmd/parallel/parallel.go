@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -10,16 +11,18 @@ import (
 
 // enable parralelism by using GOMAXPROCS
 func main() {
-	// runtime.GOMAXPROCS(runtime.NumCPU())
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	// router
 	// r := mux.NewRouter()
 	start := time.Now()
+	// enable concurrency
 	handleConcurrency()
 	fmt.Printf("Total time: %v\n", time.Since(start))
 	// have low-level, medium-level, high-level
 	// r.HandleFunc("/highLevel", heavyHandler)
 	// r.HandleFunc("/mediumLevel", mediumHandler)
 	// r.HandleFunc("/lowLevel", lowHandler)
+
 	// err := http.ListenAndServe(":8080", r)
 	// if err != nil {
 	// 	fmt.Printf("error running server")
