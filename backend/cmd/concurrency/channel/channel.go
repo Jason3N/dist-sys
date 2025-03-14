@@ -26,9 +26,9 @@ func handleConcurrency() {
 		wg.Add(1)
 		go heavyHandler(&wg)
 	}
-	go func() {
-		wg.Wait()
-	}()
+
+	wg.Wait()
+
 }
 
 func heavyHandler(wg *sync.WaitGroup) {
