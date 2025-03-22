@@ -12,29 +12,17 @@ import (
 // enable parralelism by using GOMAXPROCS
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	// router
 	// r := mux.NewRouter()
 	start := time.Now()
 	// enable concurrency
 	handleConcurrency()
 	fmt.Printf("Total time: %v\n", time.Since(start))
-	// have low-level, medium-level, high-level
-	// r.HandleFunc("/highLevel", heavyHandler)
-	// r.HandleFunc("/mediumLevel", mediumHandler)
-	// r.HandleFunc("/lowLevel", lowHandler)
 
-	// err := http.ListenAndServe(":8080", r)
-	// if err != nil {
-	// 	fmt.Printf("error running server")
-	// 	return
-	// }
 }
 
-// jesus christ?? it can run 10,000 groups of
-// mutex
 func handleConcurrency() {
 	var wg sync.WaitGroup
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 1000000; i++ {
 		wg.Add(1)
 		go heavyHandler(&wg)
 	}
@@ -44,7 +32,7 @@ func handleConcurrency() {
 func heavyHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// 1 second
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 }
 
 func mediumHandler(wg *sync.WaitGroup) {

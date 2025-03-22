@@ -2,13 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/ericlagergren/decimal"
-	"github.com/jackc/pgx"
-	"github.com/joho/godotenv"
 )
 
 var (
@@ -17,46 +14,17 @@ var (
 	wg     sync.WaitGroup
 )
 
+// enable parralelism by using GOMAXPROCS
 func main() {
 	start := time.Now()
 	handleConcurrency()
-	handleConnection()
+
 	fmt.Printf("Total time: %v\n", time.Since(start))
 	fmt.Printf("%v\n", global)
-}
 
-func handleConnection() {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Printf("env file cannot be read")
-		os.Exit(1)
-	}
-
-	CONNECTION_STRING := os.Getenv("DATABASE_URL")
-
-	config, err := pgx.ParseConnectionString(CONNECTION_STRING)
-	if err != nil {
-		fmt.Println("Database URL is wrong, please check again")
-		os.Exit(1)
-	}
-
-	conn, err := pgx.Connect(config)
-	if err != nil {
-		fmt.Println("Cannot connect to db")
-		os.Exit(1)
-	}
-
-	fmt.Println("Connected to db")
-	defer conn.Close()
-
-	var id int
-	var username, password string
-	err = conn.QueryRow(`SELECT id, username, password FROM "users_information" LIMIT 1`).Scan(&id, &username, &password)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println(id, username, password)
+	go func() {
+		wg.Wait()
+	}()
 }
 
 func handleConcurrency() {
