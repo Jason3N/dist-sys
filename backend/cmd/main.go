@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ericlagergren/decimal"
+	"github.com/goombaio/namegenerator"
 	"github.com/jackc/pgx"
 	"github.com/joho/godotenv"
 )
@@ -49,14 +50,31 @@ func handleConnection() {
 	fmt.Println("Connected to db")
 	defer conn.Close()
 
+	addRandomName(conn)
+
 	var id int
 	var username, password string
-	err = conn.QueryRow(`SELECT id, username, password FROM "users_information" LIMIT 1`).Scan(&id, &username, &password)
+	err = conn.QueryRow(`SELECT id, username, password FROM "user_t" LIMIT 1`).Scan(&id, &username, &password)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	fmt.Println(id, username, password)
+}
+
+func addRandomName(conn *pgx.Conn) {
+	seed := time.Now().UTC().UnixNano()
+	nameGenerator := namegenerator.NewNameGenerator(seed)
+	name := nameGenerator.Generate()
+	password := name + "pw"
+	fmt.Printf("%v, %v\n", name, password)
+	var lastID int
+	err := conn.QueryRow(`INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, name, password).Scan(&lastID)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Printf("last id is %v\n", lastID)
 }
 
 func handleConcurrency() {
