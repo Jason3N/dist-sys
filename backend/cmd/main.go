@@ -9,7 +9,7 @@ import (
 
 	"github.com/ericlagergren/decimal"
 	"github.com/goombaio/namegenerator"
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -19,6 +19,11 @@ var (
 	mu     sync.Mutex
 	wg     sync.WaitGroup
 )
+
+type Users struct {
+	username string
+	password string
+}
 
 func main() {
 	start := time.Now()
@@ -43,31 +48,42 @@ func handleConnection() {
 	}
 
 	fmt.Println("Connected to db")
-
-	//addRandomName(conn)
-
-	// for i := 0; i < 10; i++ {
-	// 	addRandomName(conn)
-	// }
 	defer conn.Close()
 
-	handleConcurrency(conn)
-	// var id int
-	// var username, password string
-	// err = conn.QueryRow(`SELECT id, username, password FROM "user_t" LIMIT 1`).Scan(&id, &username, &password)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	os.Exit(1)
-	// }
-	// fmt.Println(id, username, password)
+	// create X amount of users to create
+	numOfUsers := 100000
+	users := make([]Users, numOfUsers)
+	for i := 0; i < numOfUsers; i++ {
+		user, pass := generateRandomName()
+		users[i] = Users{username: user, password: pass}
+	}
+
+	// partition those users into amounts of X batches
+	batchesSize := 5000
+	batches := partitionBatch(users, batchesSize)
+	fmt.Printf("Total batches: %d\n", len(batches))
+	handleConcurrency(conn, batches)
 }
 
-func handleConcurrency(conn *pgxpool.Pool) {
-	for i := 0; i < 1000; i++ {
+func handleConcurrency(conn *pgxpool.Pool, batches [][]Users) {
+	for _, batch := range batches {
+		// batch is a bunch of [][]Users
 		wg.Add(1)
-		go addRandomNameCon(conn, &wg)
+		go addRandomNameConBatch(conn, batch)
 	}
-	defer wg.Wait()
+	wg.Wait()
+}
+
+func partitionBatch(users []Users, batchesSize int) [][]Users {
+	var batches [][]Users
+	for i := 0; i < len(users); i += batchesSize {
+		end := i + batchesSize
+		if end > len(users) {
+			end = len(users)
+		}
+		batches = append(batches, users[i:end])
+	}
+	return batches
 }
 
 func generateRandomName() (string, string) {
@@ -77,20 +93,22 @@ func generateRandomName() (string, string) {
 	// generate username / password
 	name := nameGenerator.Generate()
 	password := name + "pw"
+	// return user, pw
 	return name, password
 }
 
+// adding random users through single insertions iteratively
 func addRandomName(conn *pgx.Conn) {
 	user, pass := generateRandomName()
 	var lastID int
-	err := conn.QueryRow(`INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, user, pass).Scan(&lastID)
+	err := conn.QueryRow(context.Background(), `INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, user, pass).Scan(&lastID)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	//fmt.Printf("last id is %v\n", lastID)
 }
 
+// adding random users through concurrency, single insertions
 func addRandomNameCon(conn *pgxpool.Pool, wg *sync.WaitGroup) {
 	defer wg.Done()
 	mu.Lock()
@@ -102,9 +120,28 @@ func addRandomNameCon(conn *pgxpool.Pool, wg *sync.WaitGroup) {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	//fmt.Printf("last id is %v\n", lastID)
 }
 
+// adding random users through concurrency, batch insertions
+func addRandomNameConBatch(conn *pgxpool.Pool, user []Users) error {
+	defer wg.Done()
+	batch := &pgx.Batch{}
+	for _, users := range user {
+		batch.Queue(`INSERT INTO "user_t" (username, password) VALUES ($1, $2)`, users.username, users.password)
+	}
+
+	br := conn.SendBatch(context.Background(), batch)
+	for range user {
+		_, err := br.Exec()
+		if err != nil {
+			br.Close()
+			os.Exit(1)
+		}
+	}
+	return br.Close()
+}
+
+// TODO: MORE FUNCTIONS HERE
 func heavyHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// some action must be done here, simulated with accessing atomic var
