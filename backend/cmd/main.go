@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/ericlagergren/decimal"
 	"github.com/goombaio/namegenerator"
 	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/joho/godotenv"
 )
 
@@ -20,7 +22,6 @@ var (
 
 func main() {
 	start := time.Now()
-	handleConcurrency()
 	handleConnection()
 	fmt.Printf("Total time: %v\n", time.Since(start))
 	fmt.Printf("%v\n", global)
@@ -35,54 +36,73 @@ func handleConnection() {
 
 	CONNECTION_STRING := os.Getenv("DATABASE_URL")
 
-	config, err := pgx.ParseConnectionString(CONNECTION_STRING)
+	conn, err := pgxpool.Connect(context.Background(), CONNECTION_STRING)
 	if err != nil {
-		fmt.Println("Database URL is wrong, please check again")
-		os.Exit(1)
-	}
-
-	conn, err := pgx.Connect(config)
-	if err != nil {
-		fmt.Println("Cannot connect to db")
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Connected to db")
+
+	//addRandomName(conn)
+
+	// for i := 0; i < 10; i++ {
+	// 	addRandomName(conn)
+	// }
 	defer conn.Close()
 
-	addRandomName(conn)
+	handleConcurrency(conn)
+	// var id int
+	// var username, password string
+	// err = conn.QueryRow(`SELECT id, username, password FROM "user_t" LIMIT 1`).Scan(&id, &username, &password)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	os.Exit(1)
+	// }
+	// fmt.Println(id, username, password)
+}
 
-	var id int
-	var username, password string
-	err = conn.QueryRow(`SELECT id, username, password FROM "user_t" LIMIT 1`).Scan(&id, &username, &password)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+func handleConcurrency(conn *pgxpool.Pool) {
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go addRandomNameCon(conn, &wg)
 	}
-	fmt.Println(id, username, password)
+	defer wg.Wait()
+}
+
+func generateRandomName() (string, string) {
+	// generate random_seed
+	seed := time.Now().UTC().UnixNano()
+	nameGenerator := namegenerator.NewNameGenerator(seed)
+	// generate username / password
+	name := nameGenerator.Generate()
+	password := name + "pw"
+	return name, password
 }
 
 func addRandomName(conn *pgx.Conn) {
-	seed := time.Now().UTC().UnixNano()
-	nameGenerator := namegenerator.NewNameGenerator(seed)
-	name := nameGenerator.Generate()
-	password := name + "pw"
-	fmt.Printf("%v, %v\n", name, password)
+	user, pass := generateRandomName()
 	var lastID int
-	err := conn.QueryRow(`INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, name, password).Scan(&lastID)
+	err := conn.QueryRow(`INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, user, pass).Scan(&lastID)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Printf("last id is %v\n", lastID)
+	//fmt.Printf("last id is %v\n", lastID)
 }
 
-func handleConcurrency() {
-	for i := 0; i < 100000; i++ {
-		wg.Add(1)
-		go heavyHandler(&wg)
+func addRandomNameCon(conn *pgxpool.Pool, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mu.Lock()
+	user, pass := generateRandomName()
+	mu.Unlock()
+	var lastID int
+	err := conn.QueryRow(context.Background(), `INSERT INTO "user_t" (username, password) values ($1, $2) RETURNING ID`, user, pass).Scan(&lastID)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-	wg.Wait()
+	//fmt.Printf("last id is %v\n", lastID)
 }
 
 func heavyHandler(wg *sync.WaitGroup) {
