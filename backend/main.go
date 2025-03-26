@@ -48,10 +48,9 @@ func handleConnection() {
 	}
 
 	fmt.Println("Connected to db")
-	defer conn.Close()
 
 	// create X amount of users to create
-	numOfUsers := 100000
+	numOfUsers := 100
 	users := make([]Users, numOfUsers)
 	for i := 0; i < numOfUsers; i++ {
 		user, pass := generateRandomName()
@@ -59,10 +58,12 @@ func handleConnection() {
 	}
 
 	// partition those users into amounts of X batches
-	batchesSize := 5000
+	batchesSize := 10
 	batches := partitionBatch(users, batchesSize)
 	fmt.Printf("Total batches: %d\n", len(batches))
 	handleConcurrency(conn, batches)
+
+	defer conn.Close()
 }
 
 func handleConcurrency(conn *pgxpool.Pool, batches [][]Users) {
