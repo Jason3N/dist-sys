@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "github.com/Jason3N/super-duper-high-dist-sys/userpb";
+
+service UserService {
+  rpc CreateRandomUsersBatch(BatchRequest) returns (BatchResponse);
+  rpc GetGlobalStat(Empty) returns (GlobalResponse);
+}
+
+message BatchRequest {
+  int32 amount = 1;
+}
+
+message BatchResponse {
+  int32 amount = 1;
+}
+
+message GlobalResponse {
+  int32 amount = 1;
+}
+
+message Empty {}

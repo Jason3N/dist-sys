@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/ericlagergren/decimal"
+	"github.com/Jason3N/super-duper-high-dist-sys/userpb"
 	"github.com/goombaio/namegenerator"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -23,6 +26,10 @@ var (
 type Users struct {
 	username string
 	password string
+}
+type server struct {
+	userpb.UnimplementedUserServiceServer
+	db *pgxpool.Pool
 }
 
 func main() {
@@ -48,27 +55,66 @@ func handleConnection() {
 	}
 
 	fmt.Println("Connected to db")
-
-	// create X amount of users to create
-	numOfUsers := 100
-	users := make([]Users, numOfUsers)
-	for i := 0; i < numOfUsers; i++ {
-		user, pass := generateRandomName()
-		users[i] = Users{username: user, password: pass}
+	defer conn.Close()
+	// create a GPRC server at port :6000
+	lis, err := net.Listen("tcp", ":6000")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(2)
 	}
 
-	// partition those users into amounts of X batches
-	batchesSize := 10
-	batches := partitionBatch(users, batchesSize)
-	fmt.Printf("Total batches: %d\n", len(batches))
-	handleConcurrency(conn, batches)
+	grpcServer := grpc.NewServer()
+	userpb.RegisterUserServiceServer(grpcServer, &server{db: conn})
 
-	defer conn.Close()
+	fmt.Printf("gRPC server up at port :6000")
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		RunClient()
+	}()
+
+	if err := grpcServer.Serve(lis); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(2)
+	}
+
 }
+
+func RunClient() {
+	conn, err := grpc.Dial("localhost:6000", grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Could not connect: %v", err)
+	}
+	defer conn.Close()
+
+	client := userpb.NewUserServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	req := &userpb.BatchRequest{Amount: 50}
+	res, err := client.CreateRandomUsersBatch(ctx, req)
+	if err != nil {
+		log.Fatalf("Error calling CreateRandomUsersBatch: %v", err)
+	}
+
+	fmt.Printf("Successfully inserted %d users into DB\n", res.GetAmount())
+}
+
+// func (s *Server) CreateRandomUsersBatch(ctx context.Context, req *userpb.BatchRequest) (*userpb.BatchResponse, error) {
+// 	numOfUsers := int(req.GetAmount())
+// 	users := make([]Users, numOfUsers)
+// 	for i := 0; i < numOfUsers; i++ {
+// 		user, pass := generateRandomName()
+// 		users[i] = Users{username: user, password: pass}
+// 	}
+// 	batches := partitionBatch(users, 10)
+// 	handleConcurrency(s.db, batches)
+// 	return &userpb.BatchResponse{Amount: int32(numOfUsers)}, nil
+// }
 
 func handleConcurrency(conn *pgxpool.Pool, batches [][]Users) {
 	for _, batch := range batches {
-		// batch is a bunch of [][]Users
 		wg.Add(1)
 		go addRandomNameConBatch(conn, batch)
 	}
@@ -128,7 +174,7 @@ func addRandomNameConBatch(conn *pgxpool.Pool, user []Users) error {
 	defer wg.Done()
 	batch := &pgx.Batch{}
 	for _, users := range user {
-		batch.Queue(`INSERT INTO "user_t" (username, password) VALUES ($1, $2)`, users.username, users.password)
+		batch.Queue(`INSERT INTO public."gRPC_table" (username, password) VALUES ($1, $2)`, users.username, users.password)
 	}
 
 	br := conn.SendBatch(context.Background(), batch)
@@ -140,35 +186,4 @@ func addRandomNameConBatch(conn *pgxpool.Pool, user []Users) error {
 		}
 	}
 	return br.Close()
-}
-
-// TODO: MORE FUNCTIONS HERE
-func heavyHandler(wg *sync.WaitGroup) {
-	defer wg.Done()
-	// some action must be done here, simulated with accessing atomic var
-	// this will be placeholder for read/write on db
-	// will stop race conditions by placing mutex lock
-	mu.Lock()
-	global++
-	mu.Unlock()
-	// assume action takes 1 second
-	time.Sleep(1 * time.Second)
-}
-
-func mediumHandler(wg *sync.WaitGroup) {
-	defer wg.Done()
-	// 0.5 second
-	mediumTime := new(decimal.Big).SetFloat64(0.5)
-	mediumTimeFloat, _ := mediumTime.Float64()
-	sleepDuration := time.Duration(mediumTimeFloat * float64(time.Second))
-	time.Sleep(sleepDuration)
-}
-
-func lowHandler(wg *sync.WaitGroup) {
-	defer wg.Done()
-	// 0.25 second
-	lowTime := new(decimal.Big).SetFloat64(0.5)
-	lowFloat, _ := lowTime.Float64()
-	sleepDuration := time.Duration(lowFloat * float64(time.Second))
-	time.Sleep(sleepDuration)
 }
