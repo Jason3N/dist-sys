@@ -8,3 +8,15 @@
 ## 3/14
 
 - added a waitgroup and used go routines to proc a function that runs way faster.. way faster than 1 second, need to figure that out because i moved a wait function inside of a go func.. will check out later but if not malicious will continue with this approach
+
+
+## 3/25
+
+- oops, anyway back to this project
+- figured out the difference between a single connection and a connection pool, connection pool allows for more connections and thus will allow concurrent transactions which is difficult for a single connection to handle
+- also sped up insertions by going from single iterations of insertions, pgxpool + concurrency, and then with the last addition of batch insertion
+- wrote dockerfile and will deploy to k8s to have multiple instances of this running at once to limit test
+
+## 4/7
+- added gRPC, going to figure out more
+- want to start testing out with gRPC and limit testing ways to optimize, as well as adding more observation such as promethus, also want to test time it takes for not only insertions of just text but json files / vectorized db for AI/ML
